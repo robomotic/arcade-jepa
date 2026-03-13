@@ -1,0 +1,7 @@
+# Git LFS tracking for model/checkpoint and dataset artifacts
+*.pt filter=lfs diff=lfs merge=lfs -text
+*.pth filter=lfs diff=lfs merge=lfs -text
+*.ckpt filter=lfs diff=lfs merge=lfs -text
+*.npz filter=lfs diff=lfs merge=lfs -text
+Breakout/checkpoints/** filter=lfs diff=lfs merge=lfs -text
+Breakout/data/** filter=lfs diff=lfs merge=lfs -text
