@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 from pathlib import Path
 
 import torch
@@ -25,11 +26,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--encoder-checkpoint", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, default=Path("Breakout/checkpoints/q_head"))
     parser.add_argument("--context-length", type=int, default=4)
-    parser.add_argument("--latent-dim", type=int, default=512)
+    # Default 256: validated best latent dimensionality from Stage 1 grid sweep.
+    parser.add_argument("--latent-dim", type=int, default=256)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--gamma", type=float, default=0.99)
+    parser.add_argument(
+        "--target-sync-epochs",
+        type=int,
+        default=1,
+        help="Copy online Q-Head weights into the target Q-Head every N epochs.",
+    )
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
 
@@ -53,6 +61,13 @@ def main() -> None:
 
     encoder = load_encoder(args.encoder_checkpoint, args.context_length, args.latent_dim, args.device)
     q_head = QHead(latent_dim=args.latent_dim, num_actions=NUM_BREAKOUT_ACTIONS).to(args.device)
+    # Target network: frozen copy of the online Q-Head used to compute stable
+    # Bellman targets, avoiding the moving-target instability of the deadly triad.
+    target_q_head = copy.deepcopy(q_head)
+    target_q_head.eval()
+    for p in target_q_head.parameters():
+        p.requires_grad_(False)
+
     optimizer = torch.optim.Adam(q_head.parameters(), lr=args.learning_rate)
 
     for epoch in range(1, args.epochs + 1):
@@ -69,10 +84,10 @@ def main() -> None:
                 z_t = encoder(context)   # current-state latent  (B, D)
                 z_t1 = encoder(target)   # next-state latent      (B, D)
 
-                # 1-step Bellman target:
-                # Q*(s,a) ≈ r + γ · max_{a'} Q(s', a')  (no bootstrap at episode end)
+                # 1-step Bellman target using the frozen target Q-Head:
+                # Q*(s,a) ≈ r + γ · (1−done) · max_{a'} Q_target(s', a')
                 done = (terminated | truncated).float()
-                next_q_max = q_head(z_t1).max(dim=1).values
+                next_q_max = target_q_head(z_t1).max(dim=1).values
                 td_target = rewards + args.gamma * (1.0 - done) * next_q_max
 
             # Select Q-value of the action actually taken
@@ -86,6 +101,10 @@ def main() -> None:
 
             running_loss += float(loss.item())
 
+        # Hard-copy online → target Q-Head every N epochs.
+        if epoch % args.target_sync_epochs == 0:
+            target_q_head.load_state_dict(q_head.state_dict())
+
         average_loss = running_loss / max(len(dataloader), 1)
         checkpoint_path = args.output_dir / f"q_head_epoch_{epoch:03d}.pt"
         torch.save(
@@ -97,7 +116,7 @@ def main() -> None:
             },
             checkpoint_path,
         )
-        print(f"Epoch {epoch}: td_loss={average_loss:.6f} saved={checkpoint_path}")
+        print(f"Epoch {epoch:03d}: td_loss={average_loss:.6f}  saved={checkpoint_path.name}")
 
 
 if __name__ == "__main__":
