@@ -244,6 +244,43 @@ Ran `train_latent_imagination.py` with `jepa_epoch_003.pt`, `latent_dim=256`, `r
 
 ## 10) What I will try next
 
+After the first failed Stage 1.5 attempt, I implemented **Fix 1**:
+
+- In `train_latent_imagination.py`, I changed imagined reward computation to:
+    - `imagined_reward = reward_head(z, actions).clamp(min=0.0)`
+
+I then re-ran Stage 1.5 with the same setup (`latent_dim=256`, `rollout_length=5`, `epsilon=0.1`, 10 epochs) and compared baseline vs Fix 1.
+
+### 10.1 Fix 1 empirical outcome
+
+| Metric | Baseline (no clamp) | Fix 1 (clamp) | Interpretation |
+|---|---:|---:|---|
+| Avg `imag_reward` | −0.0101 | +0.0000 | ✅ Negative reward bias removed |
+| Avg `q_std` | 0.0145 | 0.0058 | ❌ Action-value spread became even weaker |
+| Avg `entropy` | 0.3230 | 0.3327 | ≈ no meaningful improvement (still collapsed regime) |
+| Final train loss | 0.000002 | 0.000000 | ❌ Still immediate collapse |
+
+Environment check:
+
+| Eval setup | Baseline | Fix 1 | Interpretation |
+|---|---:|---:|---|
+| `eval_policy.py`, ε=0.05, 20 episodes | 0.25 ± 0.54 | 0.65 ± 0.79 | Slight stochastic improvement, unstable |
+| `eval_policy.py`, ε=0.0, 10 episodes | 0.00 | 0.00 | No deterministic policy learning |
+
+### 10.2 Why Fix 2 is now required
+
+Fix 1 solved only the **reward sign bias**. It did **not** solve the core learning bottleneck:
+
+1. Bellman targets are still near-constant after clamping (roughly zero + weak bootstrap).
+2. Predictor action-conditioning on validation states is weak (`val_action_sensitivity` peaks at ~0.0045 and collapses).
+3. The Q-Head still receives almost no action-discriminative gradient, so it converges to a near-constant Q surface.
+
+Therefore **Fix 2 is required** to increase signal quality at the Stage 1 source:
+
+- Add `--reward-loss-weight` to Stage 1 (`train_jepa.py`) so RewardHead learns sparse reward structure more strongly.
+- Re-run Stage 1 longer (20 epochs) and select checkpoint by best `val_action_sensitivity` + stable `val_total_loss`.
+- Re-run Stage 1.5 from that improved world model.
+
 The two root causes require fixes at different levels:
 
 ### Fix 1 — Reward signal: clamp and re-centre in the rollout
@@ -261,7 +298,7 @@ The deeper fix is to produce a predictor that generates meaningfully different $
 | Upweight the **reward loss** in Stage 1 (`--reward-loss-weight`) | Low | Pushes the head to distinguish reward-bearing states, indirectly improving action-conditioned structure |
 | Collect data with a **partially-trained policy** that actually earns rewards | High | Most impactful — exposes the predictor to genuine action consequence |
 
-My immediate next step is to apply Fix 1 (clamp) and also add a `--reward-loss-weight` argument to `train_jepa.py` so the reward head is trained more strongly relative to the JEPA loss, then re-run Stage 1 for 20 epochs and re-attempt Stage 1.5.
+My immediate next step is to apply Fix 2: add `--reward-loss-weight` to `train_jepa.py`, re-run Stage 1 for 20 epochs, and re-attempt Stage 1.5 using the best new checkpoint.
 
 ---
 
@@ -275,8 +312,8 @@ My immediate next step is to apply Fix 1 (clamp) and also add a `--reward-loss-w
 | Graceful fallback for legacy Stage 1 checkpoints missing `reward_head` key | ✅ |
 | Stage 1 re-run at `latent_dim=256` (best validated config) | ✅ |
 | First Stage 1.5 empirical run | ✅ (completed — failure diagnosed) |
-| Fix 1: clamp imagined rewards to `[0, ∞)` in rollout | ⬜ |
-| Fix 2: `--reward-loss-weight` in Stage 1 + 20-epoch retrain | ⬜ |
+| Fix 1: clamp imagined rewards to `[0, ∞)` in rollout | ✅ (implemented + measured) |
+| Fix 2: `--reward-loss-weight` in Stage 1 + 20-epoch retrain | ⬜ (next required step) |
 | Fix 3 (optional): collect policy-guided data for better action diversity | ⬜ |
 | Clean Stage 1.5 run with healthy diagnostics | ⬜ |
 | Stage 2 warm-start comparison (with vs without Stage 1.5 init) | ⬜ (after clean Stage 1.5) |

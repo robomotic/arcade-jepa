@@ -221,7 +221,7 @@ def imagination_rollout(
         # ----- world-model step (no gradient through frozen models) -----
         with torch.no_grad():
             z_next = predictor(z, actions)                          # (B, D)
-            imagined_reward = reward_head(z, actions)               # (B,)
+            imagined_reward = reward_head(z, actions).clamp(min=0.0)  # (B,)
             next_q = target_q_head(z_next).max(dim=1).values        # (B,)
             td_target = imagined_reward + gamma * next_q
 
