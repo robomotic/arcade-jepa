@@ -107,7 +107,6 @@ A `run_summary.json` is written alongside the shards with env config metadata.
 
 ---
 
-## Three-Stage Training Pipeline
 ## Training Pipeline
 
 | Stage | Name | Input | Objective | Notes |
@@ -134,6 +133,8 @@ A `run_summary.json` is written alongside the shards with env config metadata.
 | `Breakout/dataset.py` | PyTorch dataset, context windows, horizon targets |
 | `Breakout/models/jepa.py` | `ConvEncoder`, `ActionConditionedPredictor` |
 | `Breakout/train_jepa.py` | Stage 1: masked JEPA pretraining with diagnostics |
+| `Breakout/plan_mppi.py` | MPPI planner over latent rollouts (encoder + predictor only) |
+| `Breakout/eval_mppi.py` | Run MPPI gameplay/evaluation episodes and write CSV summaries |
 | `Breakout/random_agent.py` | Smoke-test runner on `ALE/Breakout-v5` |
 
 ---
@@ -146,6 +147,7 @@ A `run_summary.json` is written alongside the shards with env config metadata.
 | 2 | Verify installation |
 | 3 | Collect random-policy data |
 | 4 | Pretrain JEPA world model |
+| 5 | Run MPPI controller (optional) |
 
 ### 1. Set up the environment
 
@@ -180,6 +182,19 @@ uv pip install gymnasium ale-py autorom torch torchvision pillow
     --epochs      20 \
     --batch-size  256 \
     --context-length 4
+```
+
+### 5. (Optional) Run MPPI controller with the Stage 1 checkpoint
+
+```bash
+.venv/bin/python Breakout/eval_mppi.py \
+    --encoder-checkpoint Breakout/checkpoints/jepa/jepa_epoch_020.pt \
+    --output-dir Breakout/checkpoints/eval_mppi \
+    --episodes 20 \
+    --num-samples 512 \
+    --horizon 5 \
+    --gamma 0.99 \
+    --force-fire-on-reset
 ```
 ---
 
