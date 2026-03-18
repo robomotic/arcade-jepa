@@ -10,7 +10,6 @@ This report summarizes exactly how Stage 1 was trained, how we validated it, how
 | Input representation | Grayscale `84×84`, context window of 4 frames, normalized to `[0,1]` |
 | Core model | `ConvEncoder` + `ActionConditionedPredictor` + EMA target encoder |
 | Primary objective | `SmoothL1( Predictor(Encoder(masked context), a_t), TargetEncoder(target) )` |
-| Auxiliary objective | `SmoothL1( RewardHead(z_t, a_t), r_t )` |
 | Masking | Spatial masking (default 50%) on online encoder input |
 | Optimization | AdamW, batch size 256 |
 | Key options | `--train-horizon` (true k-step objective), `--mask-ratio`, `--val-ratio` |
@@ -19,7 +18,6 @@ This report summarizes exactly how Stage 1 was trained, how we validated it, how
 
 - The EMA target stabilizes latent targets.
 - Masking reduces pixel-level shortcuts.
-- Reward auxiliary loss makes the latent dynamics useful for downstream control.
 - `--train-horizon` enables both classic 1-step JEPA and harder k-step variants without forking code.
 
 ## 2) Validation protocol used
@@ -27,7 +25,7 @@ This report summarizes exactly how Stage 1 was trained, how we validated it, how
 | Validation item | Method |
 |---|---|
 | Train/val split | Random split with `--val-ratio 0.1` |
-| Core tracked metrics | `train_total_loss`, `val_total_loss`, JEPA/reward components |
+| Core tracked metrics | `train_jepa_loss`, `val_jepa_loss` |
 | Action-conditioning metric | `val_action_sensitivity` (latent prediction change when action is perturbed) |
 | Dynamics stability metric | `val_rollout_drift` over fixed unroll horizon |
 
@@ -150,7 +148,6 @@ Interpretation:
 | Chart | File |
 |---|---|
 | Train vs validation total loss | [screenshots/stage1_loss_train_val.png](screenshots/stage1_loss_train_val.png) |
-| JEPA vs reward loss components | [screenshots/stage1_loss_components.png](screenshots/stage1_loss_components.png) |
 | Action sensitivity over epochs | [screenshots/stage1_action_sensitivity.png](screenshots/stage1_action_sensitivity.png) |
 | Copy baseline gap | [screenshots/stage1_copy_baseline_gap.png](screenshots/stage1_copy_baseline_gap.png) |
 | Rollout drift | [screenshots/stage1_rollout_drift.png](screenshots/stage1_rollout_drift.png) |
@@ -170,33 +167,7 @@ Interpretation:
 | Overall status | Stage 1 is successful: stable training, validated diagnostics, and strong ablation evidence |
 
 ## 8) Appendable random-action collision analysis artifacts
-
-To quantify Stage 1 random-data interaction signal, evaluation now writes append-only artifacts under:
-
-- `Breakout/checkpoints/eval_policy/eval_runs.csv`
-- `Breakout/checkpoints/eval_policy/eval_episodes.csv`
-- `Breakout/checkpoints/eval_policy/paddle_hit_events.jsonl`
-- `Breakout/checkpoints/eval_policy/ball_heatmap_<run_id>.npy`
-- `Breakout/checkpoints/eval_policy/ball_heatmap_<run_id>.png`
-
-Metric definitions used:
-
-| Metric | Definition |
-|---|---|
-| Brick hits (proxy) | Count of transitions where `reward > 0` |
-| Paddle hits (estimate) | Conservative pixel heuristic: detected ball trajectory flips from down→up near paddle y-band and within paddle x-range |
-| Ball spatial distribution | 2D heatmap over detected ball positions (`84×84`) aggregated across episodes |
-
-Debugging support:
-
-- Optional paddle-hit screenshots are written to `screenshots/eval_debug/last10`.
-- Retention is rolling: only the latest 10 screenshots are kept.
-
-Charts:
-
-- `Breakout/generate_stage_charts.py` now reads appended eval runs from `Breakout/checkpoints/eval_policy/eval_runs.csv` (with legacy fallback if unavailable).
-
-## 9) Random Dataset File Structure
+## 8) Random Dataset File Structure
 
 The regenerated random dataset now has four layers of artifacts under `Breakout/data/random`:
 

@@ -27,12 +27,11 @@ For stricter realism, I can replace extrinsic reward with **prediction-error-dri
 - Objective: seek states where the predictor error is high.
 - Result: the agent explores novel transitions and can still discover high-value behaviors while improving world-model fidelity.
 
-### Updated realistic Stage 2 (goal-seeking)
+### Updated realistic JEPA framing
 
 | Stage | Input | Target | Reality Check |
 | --- | --- | --- | --- |
 | **Stage 1 (JEPA)** | Pixels | Next Latent | **Realistic:** observation-only training |
-| **Stage 2 (Actor)** | Latent $z_t$ | **Distance to $z_{goal}$** | **Realistic:** goal representation rather than numeric score |
 
 ### Realism summary
 
@@ -48,7 +47,6 @@ I currently use **staged learning** (offline pretraining followed by downstream 
 ### 1. Why staged learning is limited
 
 - **Stage 1 (JEPA):** learns from a fixed data distribution.
-- **Stage 2 (Actor):** optimizes policy on frozen or mostly fixed representations.
 - **Gap:** once dynamics shift, a frozen world model cannot adapt to new regimes.
 
 ### 2. What continual learning requires
@@ -68,5 +66,5 @@ To make the system continual, I need concurrent adaptation:
 
 ### Continual-learning summary
 
-The current 3-stage design is a strong and stable baseline.
-To claim true continual learning, I need an additional online co-adaptation phase where both JEPA and actor update during active play.
+The current staged design is a strong and stable baseline.
+To claim true continual learning, I need an additional online co-adaptation phase where JEPA updates during active play.

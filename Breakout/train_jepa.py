@@ -10,10 +10,10 @@ from torch.utils.data import DataLoader, Subset
 
 try:
     from .dataset import BreakoutTransitionDataset
-    from .models import ActionConditionedPredictor, ConvEncoder, RewardHead
+    from .models import ActionConditionedPredictor, ConvEncoder
 except ImportError:
     from dataset import BreakoutTransitionDataset
-    from models import ActionConditionedPredictor, ConvEncoder, RewardHead
+    from models import ActionConditionedPredictor, ConvEncoder
 
 
 @torch.no_grad()
@@ -96,18 +96,6 @@ def parse_args() -> argparse.Namespace:
         help="Path to a checkpoint .pt file to resume training from. "
              "Epoch numbering continues after the saved epoch.",
     )
-    parser.add_argument(
-        "--reward-loss-weight",
-        type=float,
-        default=1.0,
-        help=(
-            "Scalar multiplier on the RewardHead auxiliary loss relative to the JEPA loss. "
-            "The default (1.0) preserves the original equal-weight behaviour. "
-            "Raising this (e.g. 10.0) forces the RewardHead to fit the sparse reward "
-            "distribution more tightly, which reduces the negative bias that causes "
-            "Bellman-target collapse in Stage 1.5 imagination rollouts."
-        ),
-    )
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
 
@@ -131,26 +119,21 @@ def main() -> None:
     encoder = ConvEncoder(input_channels=args.context_length, latent_dim=args.latent_dim).to(args.device)
     target_encoder = copy.deepcopy(encoder).to(args.device)
     predictor = ActionConditionedPredictor(latent_dim=args.latent_dim).to(args.device)
-    reward_head = RewardHead(latent_dim=args.latent_dim).to(args.device)
     for parameter in target_encoder.parameters():
         parameter.requires_grad_(False)
 
     optimizer = torch.optim.AdamW(
-        list(encoder.parameters()) + list(predictor.parameters()) + list(reward_head.parameters()),
+        list(encoder.parameters()) + list(predictor.parameters()),
         lr=args.learning_rate,
         weight_decay=args.weight_decay,
     )
     jepa_loss_fn = nn.SmoothL1Loss()
-    reward_loss_fn = nn.SmoothL1Loss()
 
     for epoch in range(1, args.epochs + 1):
         encoder.train()
         predictor.train()
-        reward_head.train()
 
-        train_total_loss = 0.0
         train_jepa_loss = 0.0
-        train_reward_loss = 0.0
         train_copy_baseline = 0.0
         train_action_sensitivity = 0.0
         train_rollout_drift = 0.0
@@ -162,7 +145,6 @@ def main() -> None:
             actions = batch["action"].to(args.device)
             future_actions = batch["future_actions"].to(args.device)
             horizon_targets = batch["horizon_target"].to(args.device)
-            rewards = batch["reward"].to(args.device)
 
             # Action-conditioned masking: zero out mask_ratio of spatial pixels
             # in the context before the online encoder. The EMA target encoder
@@ -180,19 +162,8 @@ def main() -> None:
                 predicted_latent = predictor(predicted_latent, future_actions[:, h])
             jepa_loss = jepa_loss_fn(predicted_latent, target_latent)
 
-            # Auxiliary reward loss: enriches the checkpoint for Stage 1.5
-            # latent imagination (detach so reward head doesn't bias encoder).
-            # reward_loss_weight scales the relative importance of this term;
-            # higher values push the RewardHead to fit the sparse reward
-            # distribution precisely, reducing the negative-bias artefact that
-            # collapses Bellman targets in imagination rollouts.
-            predicted_reward = reward_head(online_latent.detach(), actions)
-            reward_loss = reward_loss_fn(predicted_reward, rewards)
-
-            loss = jepa_loss + args.reward_loss_weight * reward_loss
-
             optimizer.zero_grad(set_to_none=True)
-            loss.backward()
+            jepa_loss.backward()
             optimizer.step()
             update_ema(target_encoder, encoder, args.ema_momentum)
 
@@ -215,9 +186,7 @@ def main() -> None:
                     dim=1,
                 ).mean()
 
-            train_total_loss += float(loss.item())
             train_jepa_loss += float(jepa_loss.item())
-            train_reward_loss += float(reward_loss.item())
             train_copy_baseline += float(copy_baseline.item())
             train_action_sensitivity += float(action_sensitivity.item())
             train_rollout_drift += float(rollout_drift.item())
@@ -226,20 +195,15 @@ def main() -> None:
                 break
 
         train_den = max(train_batch_count, 1)
-        train_total_loss /= train_den
         train_jepa_loss /= train_den
-        train_reward_loss /= train_den
         train_copy_baseline /= train_den
         train_action_sensitivity /= train_den
         train_rollout_drift /= train_den
 
         encoder.eval()
         predictor.eval()
-        reward_head.eval()
 
-        val_total_loss = 0.0
         val_jepa_loss = 0.0
-        val_reward_loss = 0.0
         val_copy_baseline = 0.0
         val_action_sensitivity = 0.0
         val_rollout_drift = 0.0
@@ -251,7 +215,6 @@ def main() -> None:
                 actions = batch["action"].to(args.device)
                 future_actions = batch["future_actions"].to(args.device)
                 horizon_targets = batch["horizon_target"].to(args.device)
-                rewards = batch["reward"].to(args.device)
 
                 masked_context = apply_random_mask(context, mask_ratio=args.mask_ratio)
                 online_latent = encoder(masked_context)
@@ -259,11 +222,8 @@ def main() -> None:
                 predicted_latent = online_latent
                 for h in range(args.train_horizon):
                     predicted_latent = predictor(predicted_latent, future_actions[:, h])
-                predicted_reward = reward_head(online_latent, actions)
 
                 jepa_loss = jepa_loss_fn(predicted_latent, target_latent)
-                reward_loss = reward_loss_fn(predicted_reward, rewards)
-                loss = jepa_loss + args.reward_loss_weight * reward_loss
 
                 copy_baseline = jepa_loss_fn(online_latent, target_latent)
                 action_count = predictor.action_embedding.num_embeddings
@@ -283,9 +243,7 @@ def main() -> None:
                     dim=1,
                 ).mean()
 
-                val_total_loss += float(loss.item())
                 val_jepa_loss += float(jepa_loss.item())
-                val_reward_loss += float(reward_loss.item())
                 val_copy_baseline += float(copy_baseline.item())
                 val_action_sensitivity += float(action_sensitivity.item())
                 val_rollout_drift += float(rollout_drift.item())
@@ -294,9 +252,7 @@ def main() -> None:
                     break
 
             val_den = max(val_batch_count, 1)
-        val_total_loss /= val_den
         val_jepa_loss /= val_den
-        val_reward_loss /= val_den
         val_copy_baseline /= val_den
         val_action_sensitivity /= val_den
         val_rollout_drift /= val_den
@@ -311,20 +267,15 @@ def main() -> None:
                 "encoder": encoder.state_dict(),
                 "target_encoder": target_encoder.state_dict(),
                 "predictor": predictor.state_dict(),
-                "reward_head": reward_head.state_dict(),
                 "args": checkpoint_args,
                 "epoch": epoch,
-                "loss": train_total_loss,
+                "loss": train_jepa_loss,
                 "metrics": {
-                    "train_total_loss": train_total_loss,
                     "train_jepa_loss": train_jepa_loss,
-                    "train_reward_loss": train_reward_loss,
                     "train_copy_baseline": train_copy_baseline,
                     "train_action_sensitivity": train_action_sensitivity,
                     "train_rollout_drift": train_rollout_drift,
-                    "val_total_loss": val_total_loss,
                     "val_jepa_loss": val_jepa_loss,
-                    "val_reward_loss": val_reward_loss,
                     "val_copy_baseline": val_copy_baseline,
                     "val_action_sensitivity": val_action_sensitivity,
                     "val_rollout_drift": val_rollout_drift,
@@ -334,14 +285,12 @@ def main() -> None:
         )
         print(
             f"Epoch {epoch}: "
-            f"train_total={train_total_loss:.6f} "
-            f"(jepa={train_jepa_loss:.6f}, reward={train_reward_loss:.6f}, "
-            f"copy={train_copy_baseline:.6f}, sens={train_action_sensitivity:.6f}, "
-            f"drift={train_rollout_drift:.6f}) | "
-            f"val_total={val_total_loss:.6f} "
-            f"(jepa={val_jepa_loss:.6f}, reward={val_reward_loss:.6f}, "
-            f"copy={val_copy_baseline:.6f}, sens={val_action_sensitivity:.6f}, "
-            f"drift={val_rollout_drift:.6f}) | "
+            f"train_jepa={train_jepa_loss:.6f} "
+            f"copy={train_copy_baseline:.6f} sens={train_action_sensitivity:.6f} "
+            f"drift={train_rollout_drift:.6f} | "
+            f"val_jepa={val_jepa_loss:.6f} "
+            f"copy={val_copy_baseline:.6f} sens={val_action_sensitivity:.6f} "
+            f"drift={val_rollout_drift:.6f} | "
             f"saved={checkpoint_path}"
         )
 

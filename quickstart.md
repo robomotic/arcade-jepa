@@ -107,7 +107,6 @@ Use the updated visualization script with explicit inputs:
 
 Expected refreshed images:
 - screenshots/stage1_loss_train_val.png
-- screenshots/stage1_loss_components.png
 - screenshots/stage1_action_sensitivity.png
 - screenshots/stage1_copy_baseline_gap.png
 - screenshots/stage1_rollout_drift.png
@@ -176,10 +175,7 @@ It now references:
 - updated latent-dim recommendation (192)
 
 ## 9) Optional Next Step
-
-If you want to continue after this point, the natural next command is Stage 1.5 imagination training using one of the latest Stage 1 checkpoints.
-
-## 10) Common Failure Fixes
+## 9) Common Failure Fixes
 
 ### A) ALE/ROM errors (Breakout cannot start)
 

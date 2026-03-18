@@ -43,15 +43,6 @@ Static bricks are only encoded when the ball is about to hit them.
 │  │ (action embed.) │   SmoothL1                                 │
 │  └─────────────────┘                                            │
 └────────────────────────────────────────────────────────────────┘
-
-           ▼  (encoder frozen)
-
-┌────────────────────────────────────────────────────────────────┐
-│                      Policy Head (Stage 2)                      │
-│                                                                  │
-│   z_t  →  [Linear → ReLU → Linear]  →  action logits (4)       │
-│                                     →  state value  (1)         │
-└────────────────────────────────────────────────────────────────┘
 ```
 
 ### Components
@@ -61,8 +52,6 @@ Static bricks are only encoded when the ball is about to hit them.
 | `ConvEncoder` | `models/jepa.py` | CNN + MLP; maps a 4-frame grayscale stack `(4, 84, 84)` → `ℝ^512` |
 | Target Encoder | `train_jepa.py` | EMA copy of `ConvEncoder`; provides stable training targets |
 | `ActionConditionedPredictor` | `models/jepa.py` | Embeds discrete action, concatenates with latent, predicts next latent |
-| `RewardHead` | `models/jepa.py` | Auxiliary head trained in Stage 1; predicts $r_t$ from $(z_t, a_t)$ — enables imagination |
-| `QHead` | `models/jepa.py` | DQN-style head; outputs $Q(z_t, a)$ for all actions; trained with 1-step Bellman targets |
 
 ---
 
@@ -119,31 +108,19 @@ A `run_summary.json` is written alongside the shards with env config metadata.
 ---
 
 ## Three-Stage Training Pipeline
+## Training Pipeline
 
 | Stage | Name | Input | Objective | Notes |
 |---|---|---|---|---|
 | 0 | Data Collection | Environment frames + random actions | Build offline transition shards | Random policy plays ~50k steps |
-| 1 | JEPA Pretraining | Masked context frames, actions | Minimise `SmoothL1(ẑ_{t+1}, z̄_{t+1})` + reward auxiliary loss | EMA target encoder, object-centric pressure via masking |
-| 1.5 | Latent Imagination | Frozen encoder/predictor/reward head | Train Q-head on imagined latent rollouts | No `env.step()` calls |
-| 2 | Policy Training | Frozen latents + stored transitions | 1-step TD Bellman targets for Q-head | Replaces behaviour cloning on random data |
+| 1 | JEPA Pretraining | Masked context frames, actions | Minimise `SmoothL1(ẑ_{t+1}, z̄_{t+1})` | EMA target encoder, object-centric pressure via masking |
 
-### Stage 1 objective details
+### Stage 1 objective
 
 | Component | Formula / Mechanism | Purpose |
 |---|---|---|
 | JEPA latent loss | `SmoothL1( Predictor(Encoder(masked x_t), a_t), TargetEncoder(x_{t+1}) )` | Learn world dynamics in latent space |
 | Masking | Randomly zero ~50% spatial pixels in context | Prevent pixel-copy shortcuts |
-| Reward auxiliary head | `SmoothL1( R(z_t, a_t), r_t )` | Add reward awareness and enable imagination |
-
-### Stage 2 objective
-
-| Target | Equation |
-|---|---|
-| TD Bellman | `Q(z_t, a_t) ← r_t + γ · (1 − done) · max_{a'} Q(z_{t+1}, a')` |
-
-The key property of JEPA is that **Stages 1 and 2 are fully decoupled**.
-The world model can be pretrained once and shared across many downstream tasks
-or agent architectures.
 
 ---
 
@@ -155,10 +132,8 @@ or agent architectures.
 | `Breakout/envs.py` | ALE env factory + torchvision resize wrapper |
 | `Breakout/collect_random_data.py` | Random policy collector → compressed NPZ shards |
 | `Breakout/dataset.py` | PyTorch dataset, context windows, horizon targets |
-| `Breakout/models/jepa.py` | `ConvEncoder`, `ActionConditionedPredictor`, `QHead`, `RewardHead` |
-| `Breakout/train_jepa.py` | Stage 1: masked JEPA + reward auxiliary loss + diagnostics |
-| `Breakout/train_latent_imagination.py` | Stage 1.5: Q-head training on latent rollouts |
-| `Breakout/train_policy.py` | Stage 2: offline TD Q-learning on stored transitions |
+| `Breakout/models/jepa.py` | `ConvEncoder`, `ActionConditionedPredictor` |
+| `Breakout/train_jepa.py` | Stage 1: masked JEPA pretraining with diagnostics |
 | `Breakout/random_agent.py` | Smoke-test runner on `ALE/Breakout-v5` |
 
 ---
@@ -171,8 +146,6 @@ or agent architectures.
 | 2 | Verify installation |
 | 3 | Collect random-policy data |
 | 4 | Pretrain JEPA world model |
-| 5a | Optional latent-imagination bootstrap |
-| 5b | Train Q-head on real transitions |
 
 ### 1. Set up the environment
 
@@ -208,30 +181,6 @@ uv pip install gymnasium ale-py autorom torch torchvision pillow
     --batch-size  256 \
     --context-length 4
 ```
-
-### 5a. (Optional) Bootstrap Q-Head via latent imagination — Stage 1.5
-
-```bash
-.venv/bin/python Breakout/train_latent_imagination.py \
-    --data-dir        Breakout/data/random \
-    --jepa-checkpoint Breakout/checkpoints/jepa/jepa_epoch_020.pt \
-    --output-dir      Breakout/checkpoints/q_imagination \
-    --rollout-length  5 \
-    --epochs          10
-```
-
-### 5b. Train Q-Head on real stored transitions — Stage 2
-
-```bash
-.venv/bin/python Breakout/train_policy.py \
-    --data-dir           Breakout/data/random \
-    --encoder-checkpoint Breakout/checkpoints/jepa/jepa_epoch_020.pt \
-    --output-dir         Breakout/checkpoints/q_head \
-    --epochs             10 \
-    --batch-size         256 \
-    --context-length     4
-```
-
 ---
 
 ## Stack
@@ -252,9 +201,6 @@ Python ≥ 3.11 · PyTorch ≥ 2.6 · ALE ≥ 0.11
 ## Roadmap
 
 - [x] Action-conditioned masking in Stage 1 (`apply_random_mask`, 50% spatial dropout)
-- [x] Auxiliary `RewardHead` trained in Stage 1 for imagination support
-- [x] Stage 1.5 latent imagination (`train_latent_imagination.py`)
-- [x] Replace behaviour cloning with 1-step TD Q-learning (`QHead`)
 - [ ] Replace offline Q-learning with an online PPO loop using the frozen encoder
 - [ ] Extend data collection with a partially-trained policy ("active student")
 - [ ] Add TensorBoard / W&B logging to all training scripts

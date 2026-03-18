@@ -54,43 +54,20 @@ def load_grid_rows(csv_path: Path) -> list[dict]:
 
 def save_loss_train_val(rows: list[dict], screenshots_dir: Path) -> None:
     epochs = [r["epoch"] for r in rows]
-    train_total = [r["train_total_loss"] for r in rows]
-    val_total = [r["val_total_loss"] for r in rows]
+    train_total = [r["train_jepa_loss"] for r in rows]
+    val_total = [r["val_jepa_loss"] for r in rows]
 
     plt.figure(figsize=(8, 5))
-    plt.plot(epochs, train_total, marker="o", label="Train Total Loss")
-    plt.plot(epochs, val_total, marker="o", label="Val Total Loss")
+    plt.plot(epochs, train_total, marker="o", label="Train JEPA Loss")
+    plt.plot(epochs, val_total, marker="o", label="Val JEPA Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.title("Stage 1: Train vs Val Total Loss")
+    plt.title("Stage 1: Train vs Val JEPA Loss")
     plt.grid(alpha=0.3)
     plt.legend()
     plt.tight_layout()
     plt.savefig(screenshots_dir / "stage1_loss_train_val.png", dpi=150)
     plt.close()
-
-
-def save_loss_components(rows: list[dict], screenshots_dir: Path) -> None:
-    epochs = [r["epoch"] for r in rows]
-    train_jepa = [r["train_jepa_loss"] for r in rows]
-    train_reward = [r["train_reward_loss"] for r in rows]
-    val_jepa = [r["val_jepa_loss"] for r in rows]
-    val_reward = [r["val_reward_loss"] for r in rows]
-
-    plt.figure(figsize=(8, 5))
-    plt.plot(epochs, train_jepa, marker="o", label="Train JEPA Loss")
-    plt.plot(epochs, train_reward, marker="o", label="Train Reward Loss")
-    plt.plot(epochs, val_jepa, marker="o", linestyle="--", label="Val JEPA Loss")
-    plt.plot(epochs, val_reward, marker="o", linestyle="--", label="Val Reward Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.title("Stage 1: Loss Components")
-    plt.grid(alpha=0.3)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(screenshots_dir / "stage1_loss_components.png", dpi=150)
-    plt.close()
-
 
 def save_action_sensitivity(rows: list[dict], screenshots_dir: Path) -> None:
     epochs = [r["epoch"] for r in rows]
@@ -212,7 +189,6 @@ def main() -> None:
     grid_rows = load_grid_rows(args.grid_csv)
 
     save_loss_train_val(epoch_rows, args.screenshots_dir)
-    save_loss_components(epoch_rows, args.screenshots_dir)
     save_action_sensitivity(epoch_rows, args.screenshots_dir)
     save_copy_baseline_gap(epoch_rows, args.screenshots_dir)
     save_rollout_drift(epoch_rows, args.screenshots_dir)

@@ -75,13 +75,11 @@ def run_one(args: argparse.Namespace, horizon: int, mask_ratio: float) -> dict[s
     result = {
         "horizon": horizon,
         "mask_ratio": mask_ratio,
-        "train_total_loss": float(metrics.get("train_total_loss", float("nan"))),
+        "train_total_loss": float(metrics.get("train_total_loss", metrics.get("train_jepa_loss", float("nan")))),
         "train_jepa_loss": float(metrics.get("train_jepa_loss", float("nan"))),
-        "train_reward_loss": float(metrics.get("train_reward_loss", float("nan"))),
         "train_action_sensitivity": float(metrics.get("train_action_sensitivity", float("nan"))),
-        "val_total_loss": float(metrics.get("val_total_loss", float("nan"))),
+        "val_total_loss": float(metrics.get("val_total_loss", metrics.get("val_jepa_loss", float("nan")))),
         "val_jepa_loss": float(metrics.get("val_jepa_loss", float("nan"))),
-        "val_reward_loss": float(metrics.get("val_reward_loss", float("nan"))),
         "val_action_sensitivity": float(metrics.get("val_action_sensitivity", float("nan"))),
         "val_copy_baseline": float(metrics.get("val_copy_baseline", float("nan"))),
         "val_rollout_drift": float(metrics.get("val_rollout_drift", float("nan"))),
@@ -105,11 +103,9 @@ def main() -> None:
         "mask_ratio",
         "train_total_loss",
         "train_jepa_loss",
-        "train_reward_loss",
         "train_action_sensitivity",
         "val_total_loss",
         "val_jepa_loss",
-        "val_reward_loss",
         "val_action_sensitivity",
         "val_copy_baseline",
         "val_rollout_drift",
@@ -127,7 +123,7 @@ def main() -> None:
         print(
             "h={horizon}, mask={mask_ratio:.2f}, val_sens={val_action_sensitivity:.6f}, "
             "val_total={val_total_loss:.6f}, val_jepa={val_jepa_loss:.6f}, "
-            "val_reward={val_reward_loss:.6f}, val_copy={val_copy_baseline:.6f}, "
+            "val_copy={val_copy_baseline:.6f}, "
             "drift={val_rollout_drift:.6f}".format(**row)
         )
 
