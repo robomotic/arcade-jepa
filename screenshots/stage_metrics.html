@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ArcadeJepa — Stage 1.5 &amp; Stage 2 Metrics</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2a2d3e;
+    --text: #e0e0e0;
+    --muted: #888899;
+    --accent-red: #e74c3c;
+    --accent-green: #2ecc71;
+    --accent-blue: #3498db;
+    --accent-orange: #e67e22;
+    --accent-yellow: #f1c40f;
+    --section-s15: #ff9944;
+    --section-s2: #44aaff;
+    --section-eval: #dddd44;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    padding: 28px 32px;
+    min-width: 900px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 1.55rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-bottom: 6px;
+  }
+  .subtitle {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-bottom: 32px;
+  }
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin: 36px 0 6px;
+  }
+  .section-header h2 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .section-header p {
+    color: var(--muted);
+    font-size: 0.80rem;
+    flex: 1;
+  }
+  .s15   { color: var(--section-s15); }
+  .s2    { color: var(--section-s2);  }
+  .eval  { color: var(--section-eval);}
+  .grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+  .grid-diag {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 16px 12px;
+    position: relative;
+  }
+  .card-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .card-subtitle {
+    font-size: 0.70rem;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .chart-wrap {
+    position: relative;
+    height: 210px;
+  }
+  .chart-wrap-tall {
+    position: relative;
+    height: 280px;
+  }
+  .badge {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .badge-fail  { background: rgba(231,76,60,0.2);  color: #ff7777; }
+  .badge-ok    { background: rgba(46,204,113,0.2); color: #55ee88; }
+  .badge-warn  { background: rgba(230,126,22,0.2); color: #ffaa44; }
+  .summary-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 22px;
+    height: 100%;
+  }
+  .summary-card h3 {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .summary-group { margin-bottom: 14px; }
+  .summary-group-title {
+    font-size: 0.73rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 7px;
+  }
+  .summary-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 0.75rem;
+    border-bottom: 1px solid #1e2133;
+  }
+  .summary-row:last-child { border-bottom: none; }
+  .pill {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .pill-fail   { background: var(--accent-red); }
+  .pill-ok     { background: var(--accent-green); }
+  .pill-warn   { background: var(--accent-orange); }
+  .pill-next   { background: var(--accent-yellow); }
+  .summary-row span.val {
+    margin-left: auto;
+    font-family: 'Consolas', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+  .diag-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  .diag-title { font-size: 0.72rem; color: var(--muted); margin-bottom: 8px; font-weight: 600; }
+  .diag-value { font-size: 1.65rem; font-weight: 800; font-family: 'Consolas', monospace; line-height: 1; }
+  .diag-ideal { font-size: 0.68rem; color: var(--muted); margin-top: 5px; }
+  .diag-label { font-size: 0.68rem; margin-top: 6px; font-weight: 600; }
+  .progress-bar-wrap { width: 100%; height: 6px; background: #2a2d3e; border-radius: 3px; margin-top: 10px; overflow: hidden; }
+  .progress-bar { height: 100%; border-radius: 3px; }
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.72rem;
+    margin-top: 36px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<h1>ArcadeJepa &mdash; Stage 1.5 &amp; Stage 2 Training Metrics</h1>
+<p class="subtitle">ALE/Breakout-v5 &nbsp;|&nbsp; JEPA encoder (latent_dim=256, mask_ratio=0.70, reward_weight=10) &nbsp;|&nbsp; March 2026</p>
+
+<!-- STAGE 1.5 -->
+<div class="section-header">
+  <h2 class="s15">STAGE 1.5 &mdash; Latent Imagination Q-Head Bootstrap</h2>
+  <p>All three runs fail: td_loss collapses instantly, q_std decays to near-zero, entropy stuck at 0.325 (target: ln(4)=1.386). Root cause: encoder latents are reward-blind (ROC-AUC=0.50).</p>
+</div>
+
+<div class="grid-4">
+  <div class="card">
+    <div class="card-title">TD Loss <span class="badge badge-fail">COLLAPSE</span></div>
+    <div class="card-subtitle">Log scale &mdash; should remain stable, not collapse to 0</div>
+    <div class="chart-wrap"><canvas id="s15-loss"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Q-value Std <span class="badge badge-fail">TOO LOW</span></div>
+    <div class="card-subtitle">Target &gt; 0.05 &mdash; all runs decay to near-zero</div>
+    <div class="chart-wrap"><canvas id="s15-qstd"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Action Entropy <span class="badge badge-fail">DEGENERATE</span></div>
+    <div class="card-subtitle">Target: ln(4)=1.386 &mdash; stuck at 0.325 (one action dominates)</div>
+    <div class="chart-wrap"><canvas id="s15-entropy"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Imagined Reward Mean <span class="badge badge-warn">PARTIAL FIX</span></div>
+    <div class="card-subtitle">Baseline &lt; 0 (negative bias) &mdash; Fix 1+2 corrects sign</div>
+    <div class="chart-wrap"><canvas id="s15-reward"></canvas></div>
+  </div>
+</div>
+
+<!-- STAGE 2 -->
+<div class="section-header">
+  <h2 class="s2">STAGE 2 &mdash; Offline TD Q-Learning on Real Transitions</h2>
+  <p>td_loss stable, entropy = ln(4) (uniform). 10.85 return at &epsilon;=0.05 (9.9&times; random). Greedy = 0 &mdash; offline random data cannot teach state-conditional Q-values.</p>
+</div>
+
+<div class="grid-4">
+  <div class="card">
+    <div class="card-title">TD Loss &mdash; S1.5 vs Stage 2 <span class="badge badge-ok">STABLE</span></div>
+    <div class="card-subtitle">Log scale &mdash; Stage 2 holds steady at ~0.004</div>
+    <div class="chart-wrap"><canvas id="s2-loss"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Q-value Std &mdash; Short &amp; Long Run <span class="badge badge-warn">PLATEAU</span></div>
+    <div class="card-subtitle">Target &gt; 0.05 &mdash; decays slowly, no state signal in offline data</div>
+    <div class="chart-wrap"><canvas id="s2-qstd"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Action Entropy <span class="badge badge-ok">UNIFORM</span></div>
+    <div class="card-subtitle">S2 reaches ln(4) = uniform; S1.5 Fix2 stuck at 0.325</div>
+    <div class="chart-wrap"><canvas id="s2-entropy"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Real-Env Returns by Config</div>
+    <div class="card-subtitle">Mean episode return &mdash; 10 evaluation episodes</div>
+    <div class="chart-wrap"><canvas id="eval-bar-sm"></canvas></div>
+  </div>
+</div>
+
+<div style="margin:6px 0 8px">
+  <p style="font-size:0.76rem;color:var(--muted);margin-bottom:10px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;">Root-cause diagnostics &mdash; Stage 1.5 autopsy</p>
+  <div class="grid-diag">
+    <div class="diag-card">
+      <div class="diag-title">RewardHead R&sup2;</div>
+      <div class="diag-value" style="color:#ff6666">&minus;0.005</div>
+      <div class="diag-ideal">Ideal: 1.0</div>
+      <div class="diag-label" style="color:#ff6666">Worse than constant predictor</div>
+      <div class="progress-bar-wrap"><div class="progress-bar" style="width:0%;background:#e74c3c"></div></div>
+    </div>
+    <div class="diag-card">
+      <div class="diag-title">Encoder Reward ROC-AUC</div>
+      <div class="diag-value" style="color:#ff6666">0.501</div>
+      <div class="diag-ideal">Ideal: 1.0 &nbsp;|&nbsp; Random: 0.5</div>
+      <div class="diag-label" style="color:#ff6666">Statistically random &mdash; reward-blind</div>
+      <div class="progress-bar-wrap"><div class="progress-bar" style="width:1%;background:#e74c3c"></div></div>
+    </div>
+    <div class="diag-card">
+      <div class="diag-title">Val Action Sensitivity</div>
+      <div class="diag-value" style="color:#ffaa44">0.0076</div>
+      <div class="diag-ideal">Ideal: &gt; 0.10</div>
+      <div class="diag-label" style="color:#ffaa44">Per-action &sigma; &asymp; 0.000003</div>
+      <div class="progress-bar-wrap"><div class="progress-bar" style="width:7.6%;background:#e67e22"></div></div>
+    </div>
+    <div class="diag-card">
+      <div class="diag-title">Greedy Policy Q-values</div>
+      <div class="diag-value" style="color:#ff6666">~0.54</div>
+      <div class="diag-ideal">All states &amp; actions &asymp; same</div>
+      <div class="diag-label" style="color:#ff6666">Always picks LEFT &mdash; state-blind</div>
+      <div class="progress-bar-wrap"><div class="progress-bar" style="width:0%;background:#e74c3c"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- EVAL + SUMMARY -->
+<div class="section-header" style="margin-top:36px">
+  <h2 class="eval">SUMMARY &mdash; Findings &amp; Pipeline Status</h2>
+</div>
+
+<div class="grid-2" style="align-items:start">
+  <div class="card">
+    <div class="card-title">Real-environment evaluation &mdash; mean return by checkpoint &amp; &epsilon;</div>
+    <div class="card-subtitle">Random agent baseline: 1.10 &nbsp;|&nbsp; Best: 10.85 &plusmn; 0.65 at &epsilon;=0.05</div>
+    <div class="chart-wrap-tall"><canvas id="eval-bar-wide"></canvas></div>
+  </div>
+  <div class="summary-card">
+    <h3>Experiment Findings</h3>
+    <div class="summary-group">
+      <div class="summary-group-title s15">Stage 1.5 &mdash; Failure Signatures</div>
+      <div class="summary-row"><div class="pill pill-fail"></div><span>td_loss collapses to 0 in epoch 1 (all 3 runs)</span></div>
+      <div class="summary-row"><div class="pill pill-fail"></div><span>q_std decays: 0.029 &rarr; 0.004 (target &gt; 0.05)</span></div>
+      <div class="summary-row"><div class="pill pill-fail"></div><span>entropy stuck at 0.325, not ln(4)=1.386</span></div>
+      <div class="summary-row"><div class="pill pill-warn"></div><span>imag_reward &lt; 0 in baseline (fixed by Fix 1+2)</span></div>
+      <div class="summary-row"><div class="pill pill-fail"></div><span>RewardHead R&sup2; = &minus;0.005 (worse than constant)</span></div>
+      <div class="summary-row"><div class="pill pill-fail"></div><span>Encoder ROC-AUC = 0.501 &mdash; provably reward-blind</span></div>
+    </div>
+    <div class="summary-group">
+      <div class="summary-group-title s2">Stage 2 &mdash; Results</div>
+      <div class="summary-row"><div class="pill pill-ok"></div><span>td_loss stable ~0.004 throughout 15 &amp; 50 epochs</span><span class="val">0.004</span></div>
+      <div class="summary-row"><div class="pill pill-ok"></div><span>entropy = ln(4) = 1.386 (uniform policy)</span><span class="val">1.386</span></div>
+      <div class="summary-row"><div class="pill pill-ok"></div><span>return at &epsilon;=0.05: 10.85 &plusmn; 0.65 (9.9&times; random)</span><span class="val">10.85</span></div>
+      <div class="summary-row"><div class="pill pill-warn"></div><span>q_std decays slowly &mdash; no state causal signal</span><span class="val">0.006</span></div>
+      <div class="summary-row"><div class="pill pill-fail"></div><span>greedy return = 0.00, always picks LEFT</span><span class="val">0.00</span></div>
+    </div>
+    <div class="summary-group">
+      <div class="summary-group-title" style="color:var(--accent-yellow)">Next Step</div>
+      <div class="summary-row"><div class="pill pill-next"></div><span>Stage 3: Online DQN fine-tuning in real environment</span></div>
+      <div class="summary-row"><div class="pill pill-next"></div><span>Goal: break state-blindness with real reward gradient</span></div>
+    </div>
+  </div>
+</div>
+
+<footer>ArcadeJepa &nbsp;&bull;&nbsp; ALE/Breakout-v5 &nbsp;&bull;&nbsp; JEPA latent_dim=256 &nbsp;&bull;&nbsp; Generated March 2026</footer>
+
+<script>
+const GRID   = 'rgba(255,255,255,0.07)';
+const RED    = '#e74c3c';
+const GREEN  = '#2ecc71';
+const BLUE   = '#3498db';
+const ORANGE = '#e67e22';
+const YELLOW = '#f1c40f';
+const MUTED  = '#888899';
+
+const defScales = (logY) => ({
+  x: {
+    ticks: { color: MUTED, font: { size: 10 }, maxTicksLimit: 10 },
+    grid:  { color: GRID },
+    title: { display: true, text: 'Epoch', color: MUTED, font: { size: 10 } }
+  },
+  y: {
+    type: logY ? 'logarithmic' : 'linear',
+    ticks: { color: MUTED, font: { size: 10 },
+             callback: logY ? v => v.toExponential(0) : undefined },
+    grid:  { color: GRID }
+  }
+});
+
+const defPlugins = () => ({
+  legend: { labels: { color: '#cccccc', boxWidth: 14, font: { size: 11 }, padding: 8 } },
+  tooltip: { backgroundColor: '#1e2133', titleColor: '#fff', bodyColor: '#ccc', borderColor: '#2a2d3e', borderWidth: 1 }
+});
+
+const ep = n => Array.from({length: n}, (_, i) => i + 1);
+
+const s15_base_loss    = [0.000312,0.000018,0.000014,0.000011,0.000010,0.000009,0.000009,0.000008,0.000008,0.000008];
+const s15_fix1_loss    = [0.000289,0.000017,0.000013,0.000011,0.000010,0.000009,0.000009,0.000008,0.000008,0.000008];
+const s15_fix2_loss    = [0.000321,0.000016,0.000013,0.000010,0.000010,0.000009,0.000008,0.000008,0.000008,0.000008];
+const s15_base_qstd    = [0.0290,0.0041,0.0038,0.0036,0.0036,0.0035,0.0035,0.0034,0.0034,0.0034];
+const s15_fix1_qstd    = [0.0285,0.0040,0.0037,0.0035,0.0035,0.0034,0.0034,0.0033,0.0033,0.0033];
+const s15_fix2_qstd    = [0.0292,0.0042,0.0039,0.0037,0.0036,0.0036,0.0035,0.0035,0.0034,0.0034];
+const s15_base_entropy = [0.3280,0.3251,0.3248,0.3247,0.3247,0.3247,0.3247,0.3247,0.3247,0.3247];
+const s15_fix1_entropy = [0.3271,0.3251,0.3248,0.3247,0.3247,0.3247,0.3247,0.3247,0.3247,0.3247];
+const s15_fix2_entropy = [0.3274,0.3252,0.3249,0.3248,0.3247,0.3247,0.3247,0.3247,0.3247,0.3247];
+const s15_base_reward  = [-0.0081,-0.0092,-0.0093,-0.0094,-0.0094,-0.0094,-0.0094,-0.0094,-0.0094,-0.0094];
+const s15_fix1_reward  = [0.0012,0.0008,0.0007,0.0007,0.0007,0.0007,0.0007,0.0007,0.0007,0.0007];
+const s15_fix2_reward  = [0.0019,0.0011,0.0010,0.0009,0.0009,0.0009,0.0009,0.0009,0.0009,0.0009];
+
+const s2_short_loss    = [0.004836,0.003851,0.003948,0.003936,0.003901,0.003934,0.003899,0.003875,0.003927,0.003896,0.003982,0.003990,0.004114,0.004072,0.004000];
+const s2_short_val     = [0.004681,0.005826,0.004482,0.004665,0.004608,0.004850,0.004747,0.004664,0.004760,0.005102,0.004828,0.004873,0.005079,0.004899,0.004786];
+const s2_short_qstd    = [0.0295,0.0221,0.0201,0.0208,0.0162,0.0177,0.0150,0.0137,0.0118,0.0119,0.0128,0.0113,0.0120,0.0098,0.0107];
+const s2_short_entropy = [1.3856,1.3861,1.3861,1.3861,1.3862,1.3862,1.3862,1.3862,1.3862,1.3862,1.3862,1.3862,1.3862,1.3863,1.3862];
+const s2_long_qstd     = [0.0208,0.0131,0.0133,0.0136,0.0139,0.0140,0.0150,0.0153,0.0150,0.0131,0.0131,0.0150,0.0177,0.0123,0.0131,0.0128,0.0103,0.0124,0.0124,0.0133,0.0117,0.0136,0.0126,0.0108,0.0104,0.0115,0.0095,0.0090,0.0100,0.0103,0.0097,0.0105,0.0090,0.0091,0.0095,0.0079,0.0092,0.0070,0.0084,0.0074,0.0066,0.0081,0.0061,0.0064,0.0061,0.0068,0.0069,0.0073,0.0050,0.0057];
+
+function mkChart(id, cfg) { return new Chart(document.getElementById(id).getContext('2d'), cfg); }
+
+mkChart('s15-loss', { type: 'line', data: { labels: ep(10), datasets: [
+  { label: 'Baseline',           data: s15_base_loss, borderColor: RED,    backgroundColor: RED+'22',    tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'Fix 1 — clamp rwd',  data: s15_fix1_loss, borderColor: ORANGE, backgroundColor: ORANGE+'22', tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'Fix 2 — weight x10', data: s15_fix2_loss, borderColor: BLUE,   backgroundColor: BLUE+'22',   tension: 0.3, pointRadius: 3, borderWidth: 2 },
+]}, options: { responsive: true, maintainAspectRatio: false, plugins: defPlugins(), scales: defScales(true) }});
+
+mkChart('s15-qstd', { type: 'line', data: { labels: ep(10), datasets: [
+  { label: 'Baseline',           data: s15_base_qstd, borderColor: RED,    tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'Fix 1',              data: s15_fix1_qstd, borderColor: ORANGE, tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'Fix 2',              data: s15_fix2_qstd, borderColor: BLUE,   tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'Target 0.05', data: Array(10).fill(0.05), borderColor: YELLOW, borderDash: [6,3], pointRadius: 0, borderWidth: 1.5 },
+]}, options: { responsive: true, maintainAspectRatio: false, plugins: defPlugins(), scales: defScales(false) }});
+
+mkChart('s15-entropy', { type: 'line', data: { labels: ep(10), datasets: [
+  { label: 'Baseline',           data: s15_base_entropy, borderColor: RED,    tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'Fix 1',              data: s15_fix1_entropy, borderColor: ORANGE, tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'Fix 2',              data: s15_fix2_entropy, borderColor: BLUE,   tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'ln(4)=1.386 (target)', data: Array(10).fill(Math.log(4)), borderColor: GREEN, borderDash:[6,3], pointRadius:0, borderWidth:1.5 },
+  { label: '0.325 (degenerate)',   data: Array(10).fill(0.325),       borderColor: RED,   borderDash:[3,3], pointRadius:0, borderWidth:1.2 },
+]}, options: { responsive:true, maintainAspectRatio:false, plugins:defPlugins(), scales:{ ...defScales(false), y:{ ...defScales(false).y, min:0, max:1.55 } } }});
+
+mkChart('s15-reward', { type: 'line', data: { labels: ep(10), datasets: [
+  { label: 'Baseline',           data: s15_base_reward, borderColor: RED,    tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'Fix 1 — clamp',      data: s15_fix1_reward, borderColor: ORANGE, tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'Fix 2 — weight x10', data: s15_fix2_reward, borderColor: BLUE,   tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'Zero', data: Array(10).fill(0), borderColor:'#555566', borderDash:[4,4], pointRadius:0, borderWidth:1 },
+]}, options: { responsive:true, maintainAspectRatio:false, plugins:defPlugins(), scales:defScales(false) }});
+
+mkChart('s2-loss', { type: 'line', data: { labels: ep(15), datasets: [
+  { label: 'S1.5 Fix2 (collapses)', data: s15_fix2_loss, borderColor: RED,   tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'S2 train (15 ep)',      data: s2_short_loss,  borderColor: GREEN, tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'S2 val',                data: s2_short_val,   borderColor: GREEN, borderDash:[5,3], tension:0.3, pointRadius:0, borderWidth:1.5 },
+]}, options: { responsive:true, maintainAspectRatio:false, plugins:defPlugins(), scales:defScales(true) }});
+
+mkChart('s2-qstd', { type: 'line', data: { labels: ep(50), datasets: [
+  { label: 'S2 short (15 ep)', data: s2_short_qstd, borderColor: GREEN, tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'S2 long  (50 ep)', data: s2_long_qstd,  borderColor: BLUE,  tension: 0.3, pointRadius: 2, borderWidth: 2 },
+  { label: 'Target 0.05', data: Array(50).fill(0.05), borderColor: YELLOW, borderDash:[6,3], pointRadius:0, borderWidth:1.5 },
+]}, options: { responsive:true, maintainAspectRatio:false, plugins:defPlugins(), scales:defScales(false) }});
+
+mkChart('s2-entropy', { type: 'line', data: { labels: ep(15), datasets: [
+  { label: 'S1.5 Fix2 (degenerate)', data: s15_fix2_entropy, borderColor: RED,   tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'S2 short',               data: s2_short_entropy, borderColor: GREEN, tension: 0.3, pointRadius: 3, borderWidth: 2 },
+  { label: 'ln(4)=1.386 (target)', data: Array(15).fill(Math.log(4)), borderColor: GREEN, borderDash:[6,3], pointRadius:0, borderWidth:1.5 },
+  { label: '0.325 (degenerate)',    data: Array(15).fill(0.325),       borderColor: RED,   borderDash:[3,3], pointRadius:0, borderWidth:1.2 },
+]}, options: { responsive:true, maintainAspectRatio:false, plugins:defPlugins(), scales:{ ...defScales(false), y:{ ...defScales(false).y, min:0, max:1.55 } } }});
+
+const evalMeans  = [1.10, 0.65, 0.70, 10.85, 0.00, 10.55];
+const evalLabels = ['Random', 'S1.5 Fix2\ne=0.05', 'S2 ep1\ne=0.05', 'S2 ep15\ne=0.05', 'S2 ep15\ngreedy', 'S2 long\ne=0.05'];
+const evalColors = ['#777777','#e06060','#e07050','#4c9e6a','#c0392b','#3a7abf'];
+const evalLabelsFull = ['Random agent','S1.5 Fix2  e=0.05','S2 epoch 1  e=0.05','S2 epoch 15  e=0.05','S2 epoch 15  greedy e=0','S2 long (ep7)  e=0.05'];
+const evalStds   = [0.00, 0.79, 0.84, 0.65, 0.00, 1.12];
+
+const barOpts = (labels) => ({
+  responsive:true, maintainAspectRatio:false,
+  plugins: {
+    legend:{display:false},
+    tooltip:{ backgroundColor:'#1e2133', titleColor:'#fff', bodyColor:'#ccc', borderColor:'#2a2d3e', borderWidth:1 }
+  },
+  scales: {
+    x: { ticks:{ color:MUTED, font:{size:9} }, grid:{ color:GRID } },
+    y: { ticks:{ color:MUTED, font:{size:9} }, grid:{ color:GRID }, title:{display:true,text:'Return',color:MUTED,font:{size:9}}, min:-1 }
+  }
+});
+
+mkChart('eval-bar-sm', { type:'bar', data:{ labels:evalLabels, datasets:[{ label:'Mean return', data:evalMeans, backgroundColor:evalColors, borderWidth:0, borderRadius:4 }]}, options:barOpts(evalLabels) });
+mkChart('eval-bar-wide', { type:'bar', data:{ labels:evalLabelsFull, datasets:[{
+  label:'Mean return', data:evalMeans, backgroundColor:evalColors, borderWidth:0, borderRadius:5,
+}]}, options:{
+  responsive:true, maintainAspectRatio:false,
+  plugins:{
+    legend:{display:false},
+    tooltip:{ backgroundColor:'#1e2133', titleColor:'#fff', bodyColor:'#ccc', borderColor:'#2a2d3e', borderWidth:1,
+      callbacks:{ label: ctx => ` ${evalMeans[ctx.dataIndex].toFixed(2)} \u00b1 ${evalStds[ctx.dataIndex].toFixed(2)}` } }
+  },
+  scales:{
+    x:{ ticks:{color:MUTED,font:{size:11}}, grid:{color:GRID} },
+    y:{ ticks:{color:MUTED,font:{size:11}}, grid:{color:GRID}, title:{display:true,text:'Mean episode return',color:MUTED,font:{size:11}}, min:-1 }
+  }
+}});
+</script>
+</body>
+</html>

@@ -89,6 +89,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-train-batches", type=int, default=0)
     parser.add_argument("--max-val-batches", type=int, default=0)
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument(
+        "--resume-from",
+        type=Path,
+        default=None,
+        help="Path to a checkpoint .pt file to resume training from. "
+             "Epoch numbering continues after the saved epoch.",
+    )
+    parser.add_argument(
+        "--reward-loss-weight",
+        type=float,
+        default=1.0,
+        help=(
+            "Scalar multiplier on the RewardHead auxiliary loss relative to the JEPA loss. "
+            "The default (1.0) preserves the original equal-weight behaviour. "
+            "Raising this (e.g. 10.0) forces the RewardHead to fit the sparse reward "
+            "distribution more tightly, which reduces the negative bias that causes "
+            "Bellman-target collapse in Stage 1.5 imagination rollouts."
+        ),
+    )
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     return parser.parse_args()
 
@@ -162,11 +181,15 @@ def main() -> None:
             jepa_loss = jepa_loss_fn(predicted_latent, target_latent)
 
             # Auxiliary reward loss: enriches the checkpoint for Stage 1.5
-            # latent imagination (detach so reward head doesn't bias encoder)
+            # latent imagination (detach so reward head doesn't bias encoder).
+            # reward_loss_weight scales the relative importance of this term;
+            # higher values push the RewardHead to fit the sparse reward
+            # distribution precisely, reducing the negative-bias artefact that
+            # collapses Bellman targets in imagination rollouts.
             predicted_reward = reward_head(online_latent.detach(), actions)
             reward_loss = reward_loss_fn(predicted_reward, rewards)
 
-            loss = jepa_loss + reward_loss
+            loss = jepa_loss + args.reward_loss_weight * reward_loss
 
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
@@ -240,7 +263,7 @@ def main() -> None:
 
                 jepa_loss = jepa_loss_fn(predicted_latent, target_latent)
                 reward_loss = reward_loss_fn(predicted_reward, rewards)
-                loss = jepa_loss + reward_loss
+                loss = jepa_loss + args.reward_loss_weight * reward_loss
 
                 copy_baseline = jepa_loss_fn(online_latent, target_latent)
                 action_count = predictor.action_embedding.num_embeddings

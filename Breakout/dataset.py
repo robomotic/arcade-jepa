@@ -51,7 +51,9 @@ class BreakoutTransitionDataset(Dataset[dict[str, Any]]):
         self.cumulative_sizes = np.cumsum(shard_sizes)
 
     def _index_shards(self) -> list[ShardIndex]:
-        shard_paths = sorted(self.data_dir.glob("transitions_*.npz"))
+        # Match only base shards (5-digit index, no suffix) — exclude _objects / _ramdecode sidecars.
+        shard_paths = sorted(p for p in self.data_dir.glob("transitions_?????.npz")
+                             if p.stem.count("_") == 1)
         shard_indices: list[ShardIndex] = []
         for shard_path in shard_paths:
             with np.load(shard_path) as shard:
