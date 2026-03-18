@@ -52,6 +52,7 @@ Static bricks are only encoded when the ball is about to hit them.
 | `ConvEncoder` | `models/jepa.py` | CNN + MLP; maps a 4-frame grayscale stack `(4, 84, 84)` → `ℝ^512` |
 | Target Encoder | `train_jepa.py` | EMA copy of `ConvEncoder`; provides stable training targets |
 | `ActionConditionedPredictor` | `models/jepa.py` | Embeds discrete action, concatenates with latent, predicts next latent |
+| `ActorCriticHead` | `models/actor_critic.py` | Shared MLP trunk → policy logits + value estimate; trained with PPO on top of frozen encoder |
 
 ---
 
@@ -113,6 +114,7 @@ A `run_summary.json` is written alongside the shards with env config metadata.
 |---|---|---|---|---|
 | 0 | Data Collection | Environment frames + random actions | Build offline transition shards | Random policy plays ~50k steps |
 | 1 | JEPA Pretraining | Masked context frames, actions | Minimise `SmoothL1(ẑ_{t+1}, z̄_{t+1})` | EMA target encoder, object-centric pressure via masking |
+| 2 | Actor-Critic (PPO) | Live env + frozen JEPA encoder | Maximise cumulative environment reward | Encoder frozen; only `ActorCriticHead` trains |
 
 ### Stage 1 objective
 
@@ -135,6 +137,9 @@ A `run_summary.json` is written alongside the shards with env config metadata.
 | `Breakout/train_jepa.py` | Stage 1: masked JEPA pretraining with diagnostics |
 | `Breakout/plan_mppi.py` | MPPI planner over latent rollouts (encoder + predictor only) |
 | `Breakout/eval_mppi.py` | Run MPPI gameplay/evaluation episodes and write CSV summaries |
+| `Breakout/models/actor_critic.py` | `ActorCriticHead`: shared trunk → policy + value heads |
+| `Breakout/train_actor_critic.py` | Stage 2: PPO training loop on frozen JEPA encoder |
+| `Breakout/eval_actor_critic.py` | Evaluate / record Actor-Critic policy and write CSV summaries |
 | `Breakout/random_agent.py` | Smoke-test runner on `ALE/Breakout-v5` |
 
 ---
@@ -147,7 +152,9 @@ A `run_summary.json` is written alongside the shards with env config metadata.
 | 2 | Verify installation |
 | 3 | Collect random-policy data |
 | 4 | Pretrain JEPA world model |
-| 5 | Run MPPI controller (optional) |
+| 5 | Train Actor-Critic with PPO |
+| 6 | Evaluate Actor-Critic policy |
+| 7 | Run MPPI controller (optional comparison) |
 
 ### 1. Set up the environment
 
@@ -184,7 +191,34 @@ uv pip install gymnasium ale-py autorom torch torchvision pillow
     --context-length 4
 ```
 
-### 5. (Optional) Run MPPI controller with the Stage 1 checkpoint
+### 5. Train Actor-Critic with PPO on the frozen JEPA encoder
+
+```bash
+.venv/bin/python Breakout/train_actor_critic.py \
+    --encoder-checkpoint Breakout/checkpoints/jepa/jepa_epoch_020.pt \
+    --output-dir Breakout/checkpoints/ac_ppo \
+    --total-timesteps 2000000 \
+    --rollout-steps 512 \
+    --anneal-lr
+```
+
+### 6. Evaluate the trained Actor-Critic policy
+
+```bash
+# Metrics-only (20 episodes):
+.venv/bin/python Breakout/eval_actor_critic.py \
+    --ac-checkpoint Breakout/checkpoints/ac_ppo/ac_update_003900.pt \
+    --encoder-checkpoint Breakout/checkpoints/jepa/jepa_epoch_020.pt \
+    --episodes 20
+
+# With gameplay video recording:
+.venv/bin/python Breakout/eval_actor_critic.py \
+    --ac-checkpoint Breakout/checkpoints/ac_ppo/ac_update_003900.pt \
+    --encoder-checkpoint Breakout/checkpoints/jepa/jepa_epoch_020.pt \
+    --episodes 5 --record-video
+```
+
+### 7. (Optional) Run MPPI controller with the Stage 1 checkpoint
 
 ```bash
 .venv/bin/python Breakout/eval_mppi.py \
@@ -216,7 +250,9 @@ Python ≥ 3.11 · PyTorch ≥ 2.6 · ALE ≥ 0.11
 ## Roadmap
 
 - [x] Action-conditioned masking in Stage 1 (`apply_random_mask`, 50% spatial dropout)
-- [ ] Replace offline Q-learning with an online PPO loop using the frozen encoder
+- [x] MPPI intrinsic planner over latent rollouts
+- [x] Actor-Critic (PPO) policy training on frozen JEPA encoder (`train_actor_critic.py`)
+- [x] Actor-Critic evaluation + video recording (`eval_actor_critic.py`)
 - [ ] Extend data collection with a partially-trained policy ("active student")
 - [ ] Add TensorBoard / W&B logging to all training scripts
 - [ ] Evaluate representations with linear probing (ball position, paddle position)
